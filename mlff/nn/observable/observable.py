@@ -74,6 +74,10 @@ class Energy(BaseSubModule):
         point_mask = inputs['point_mask']
         z = inputs[self.atomic_type_key].astype(jnp.int16)
 
+        overlaps = inputs["overlaps"]
+        overlaps = overlaps[:, None]
+        x = jnp.append(x, overlaps, axis=1)
+
         e_loc = MLP(features=[x.shape[-1], 1], activation_fn=silu)(x).squeeze(axis=-1)  # shape: (n)
         e_loc = self.get_per_atom_scale(z) * e_loc + self.get_per_atom_shift(z)  # shape: (n)
         e_loc = safe_scale(e_loc, scale=point_mask)  # shape: (n)

@@ -82,7 +82,7 @@ class MLFFPotential(MachineLearningPotential):
 
         def shift(v, z):
             return v + jnp.asarray(scales['energy']['per_atom_shift'], dtype=dtype)[z][:, None]
-
+        
         if add_shift:
             def scale_and_shift_fn(x: jnp.ndarray, z: jnp.ndarray):
                 return shift(scale(x), z)
@@ -103,8 +103,9 @@ class MLFFPotential(MachineLearningPotential):
 
             return x
 
-        def potential_fn(graph: Graph):
+        def potential_fn(graph: Graph, overlaps: jnp.ndarray):
             x = graph_to_mlff_input(graph)
+            x["overlaps"] = overlaps
             y = obs_fn(params, x)
             return scale_and_shift_fn(y[E_key], x[z_key]).reshape(-1).astype(dtype)
 
@@ -113,5 +114,5 @@ class MLFFPotential(MachineLearningPotential):
                    potential_fn=potential_fn,
                    dtype=dtype)
 
-    def __call__(self, graph: Graph) -> jnp.ndarray:
-        return self.potential_fn(graph)
+    def __call__(self, graph: Graph, overlaps: jnp.ndarray) -> jnp.ndarray:
+        return self.potential_fn(graph, overlaps)

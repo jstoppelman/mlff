@@ -185,7 +185,7 @@ def evaluate():
             nn_out[stress_key] = stress
 
         return scale_and_shift_fn(nn_out, z)
-
+    
     # one can either load train, valid or test split
     if evaluate_on == 'train':
         n_train = h['dataset']['split']['n_train']
@@ -221,7 +221,8 @@ def evaluate():
         else:
             from mlff.data import AseDataLoader
             load_stress = pn.stress in targets
-            data_loader = AseDataLoader(data_path, load_stress=load_stress)
+            load_overlaps = True
+            data_loader = AseDataLoader(data_path, load_stress=load_stress, load_overlaps=load_overlaps)
             test_data = dict(data_loader.load_all())
 
         # test_data = dict(np.load(data_path))

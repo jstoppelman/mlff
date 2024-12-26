@@ -22,12 +22,14 @@ class AseDataLoader:
         output_file:
         load_stress:
         load_energy_and_forces:
+        load_overlaps:
         neighbors_format: dense or sparse
     """
     input_file: str
     output_file: str = None
     load_stress: bool = False
     load_energy_and_forces: bool = True
+    load_overlaps: bool = False
     neighbors_format: str = 'dense'
 
     def _load_all_dense(self) -> Dict:
@@ -52,12 +54,16 @@ class AseDataLoader:
         def extract_unit_cell(x: Atoms):
             return np.array(x.get_cell(complete=False))
 
+        def extract_overlaps(x: Atoms):
+            return np.array(x.info["overlaps"])
+
         pos = []
         nums = []
 
         energies = []
         forces = []
         stress = []
+        overlaps = []
 
         cell = []
         pbc = []
@@ -74,6 +80,9 @@ class AseDataLoader:
             if self.load_energy_and_forces:
                 energies += [extract_energy(a)]
                 forces += [pad_forces(extract_forces(a)[None], n_max=n_max).squeeze(axis=0)]
+            
+            if self.load_overlaps:
+                overlaps += [extract_overlaps(a)]
 
             if self.load_stress:
                 stress += [extract_stress(a)]
@@ -88,6 +97,8 @@ class AseDataLoader:
         if self.load_energy_and_forces:
             loaded_data.update({'E': np.stack(energies, axis=0).reshape(-1, 1),
                                 'F': np.stack(forces, axis=0)})
+        if self.load_overlaps:
+            loaded_data.update({'overlaps': np.stack(overlaps, axis=0)})
 
         node_mask = np.where(loaded_data['z'] > 0, True, False)
         loaded_data.update({'node_mask': node_mask})

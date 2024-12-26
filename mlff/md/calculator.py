@@ -2,9 +2,11 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import logging
+import os
 
 from collections import namedtuple
 from typing import Any
+from mlff.io import read_json
 
 from ase.calculators.calculator import Calculator
 
@@ -38,7 +40,7 @@ class mlffCalculator(Calculator):
                              capacity_multiplier: float = 1.25,
                              add_energy_shift: bool = False,
                              dtype: np.dtype = np.float64):
-
+        
         mlff_potential = MLFFPotential.create_from_ckpt_dir(
             ckpt_dir=ckpt_dir,
             add_shift=add_energy_shift,
@@ -84,6 +86,7 @@ class mlffCalculator(Calculator):
             'Please remember to specify the proper conversion factors, if your model does not use '
             '\'eV\' and \'Ang\' as units.'
         )
+        
         if calculate_stress:
             def energy_fn(system, strain: jnp.ndarray, neighbors):
                 graph = system_to_graph(system, neighbors)
@@ -98,13 +101,13 @@ class mlffCalculator(Calculator):
                 stress = grads[1]
                 return {'energy': energy, 'forces': forces, 'stress': stress}
         else:
-            def energy_fn(system, neighbors):
+            def energy_fn(system, neighbors, overlaps):
                 graph = system_to_graph(system, neighbors)
-                return potential(graph).sum()
+                return potential(graph, overlaps).sum()
 
             @jax.jit
-            def calculate_fn(system, neighbors):
-                energy, grads = jax.value_and_grad(energy_fn, allow_int=True)(system, neighbors)
+            def calculate_fn(system, neighbors, overlaps):
+                energy, grads = jax.value_and_grad(energy_fn, allow_int=True)(system, neighbors, overlaps)
                 forces = - grads.R
                 return {'energy': energy, 'forces': forces}
 
@@ -123,26 +126,28 @@ class mlffCalculator(Calculator):
 
         R = jnp.array(atoms.get_positions(), dtype=self.dtype)  # shape: (n,3)
         z = jnp.array(atoms.get_atomic_numbers(), dtype=jnp.int16)  # shape: (n)
-
+        overlaps = jnp.array(atoms.info["overlaps"], dtype=self.dtype) # shape (n,1)
+        
         if atoms.get_pbc().any():
             cell = jnp.array(np.array(atoms.get_cell()), dtype=self.dtype).T  # (3,3)
         else:
             cell = None
-
+        
         if self.spatial_partitioning is None:
             self.neighbors, self.spatial_partitioning = neighbor_list(positions=R,
                                                                       cell=cell,
                                                                       cutoff=self.cutoff,
                                                                       skin=0.,
                                                                       capacity_multiplier=self.capacity_multiplier)
-
+        
         neighbors = self.spatial_partitioning.update_fn(R, self.neighbors)
+        
         if neighbors.overflow:
             raise RuntimeError('Spatial overflow.')
         else:
             self.neighbors = neighbors
-
-        output = self.calculate_fn(System(R=R, Z=z, cell=cell), neighbors=neighbors)  # note different cell convention
+       
+        output = self.calculate_fn(System(R=R, Z=z, cell=cell), neighbors=neighbors, overlaps=overlaps)  # note different cell convention
 
         self.results = jax.tree_map(lambda x: np.array(x, dtype=self.dtype), output)
 
